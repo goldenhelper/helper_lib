@@ -607,7 +607,7 @@ def fgsm_attack(data, epsilon, data_grad):
     # Return the perturbed image
     return perturbed_data
 
-def test(model, epsilon, loader, device, *, to_store_init_data=False):
+def fgsm_test(model, epsilon, loader, device, *, to_store_init_data=False):
     """
     Evaluate the model under adversarial attack using the FGSM method.
 
