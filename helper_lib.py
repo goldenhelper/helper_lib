@@ -1,6 +1,6 @@
 import torch, copy
 import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader
 import torch.nn as nn
 from torchvision.transforms import functional as TF
 from matplotlib import pyplot as plt
@@ -9,11 +9,9 @@ from collections import OrderedDict
 from IPython.display import clear_output
 import torch.nn.functional as F
 
-
 def get_device(model):
     return next(model.parameters()).device
 
-# Define the Sparse Autoencoder
 class SparseAutoencoder(nn.Module):
     def __init__(self, input_size, hidden_size):
         super(SparseAutoencoder, self).__init__()
@@ -85,7 +83,6 @@ def save_layer_shapes(model, input_shape=None, get_output_shape=None):
     return {name: (layer.input_shape, layer.output_shape) for name, layer in model.named_modules() if
             hasattr(layer, 'output_shape')}
 
-# i should come up with a better name
 def _get_layer_activations(layer, mode):
     """
     Internal function to retrieve the stored activations
@@ -111,6 +108,8 @@ def _get_layer_activations(layer, mode):
 
 def get_layer_activations_from_batch(model, layers, data, output_device, mode, model_device=None):
     with torch.no_grad():
+        if model_device is None:
+            model_device = get_device(model)
         model(data.to(model_device))
 
         activations_batch = {}
@@ -188,6 +187,7 @@ def train_saes_in_batches(model, layers, saes, loader_model, sparsity_weight, le
             )
 
             for name, sae in saes.items():
+                print(f"{name}{sae} is being trained on {activations[name].shape}")
                 optimizer = optimizers[name]
                 sae.train()
 
@@ -195,7 +195,7 @@ def train_saes_in_batches(model, layers, saes, loader_model, sparsity_weight, le
                 criterion = nn.MSELoss()
 
                 # Forward pass for the SAE
-                act = activations[name].to(device)
+                act = activations[name].flatten(1).to(device)
                 encoded, decoded = sae(act)
 
                 # Compute loss
@@ -261,12 +261,13 @@ def train_sae(sae, train_loader_sae, sparsity_weight, learning_rate, num_epochs,
             print(f'Reconstruction loss: {total_reconstruction_loss / len(train_loader_sae):.4f}')
             print(f'Weighted sparcity loss: {total_weighted_sparcity_loss / len(train_loader_sae):.4f}')
 
-def create_sae(layer, *, mode=None, encoding_size=None, sae_class=SparseAutoencoder):
+def create_sae(layer, device, *, mode=None, encoding_size=None, sae_class=SparseAutoencoder):
     """
     Create a Sparse Autoencoder (SAE) model tailored to the given layer.
 
     Args:
         layer (torch.nn.Module or int): The target layer or the size of the input.
+        device (torch.device): Device the sae will be stored on.
         mode (str, optional): The mode specifying whether the SAE should be configured for the layer's inputs or outputs.
         encoding_size (int, optional): The size of the latent representation. Defaults to 4 * input size.
         sae_class (class, optional): The class of the SAE to instantiate. Defaults to SparseAutoencoder.
@@ -278,18 +279,18 @@ def create_sae(layer, *, mode=None, encoding_size=None, sae_class=SparseAutoenco
         ValueError: If `mode` is not specified when `layer` is a module.
     """
 
-
     if isinstance(layer, int):
         if encoding_size is None:
-            encoding_size = layer * 4
+            encoding_size = layer * 3
 
         sae = sae_class(layer, encoding_size)
 
     else:
-        input_size = layer.input_shape[-1]
+
+        input_size = torch.prod(torch.tensor(layer.input_shape[1:])).item()
 
         if encoding_size is None:
-            encoding_size = input_size * 4
+            encoding_size = input_size * 3
 
         if mode is None:
             raise ValueError("Mode('inputs'/'outputs') was not given.")
@@ -301,7 +302,7 @@ def create_sae(layer, *, mode=None, encoding_size=None, sae_class=SparseAutoenco
         else:
             raise ValueError('Unknown mode was given.')
 
-    return sae
+    return sae.to(device)
 
 def visualize(nums, dataset):
     """
@@ -593,7 +594,6 @@ def optim_inputs_for_neurons_in_layer(model, layer, device, mode='activations', 
 
     return optimized_inputs.detach()
 
-# FGSM attack code
 def fgsm_attack(data, epsilon, data_grad):
     # Collect the element-wise sign of the data gradient
     sign_data_grad = data_grad.sign()
