@@ -189,7 +189,6 @@ def train_saes_in_batches(model, layers, saes, loader_model, sparsity_weight, le
             )
 
             for name, sae in saes.items():
-                print(f"{name}{sae} is being trained on {activations[name].shape}")
                 optimizer = optimizers[name]
                 sae.train()
 
