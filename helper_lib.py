@@ -146,12 +146,14 @@ def get_layer_activations_from_dataset(model, layers, loader, output_device, mod
 
         activations = {}
 
-        with torch.no_grad():
-            for data, _ in loader:
+        for data, _ in loader:
 
-                activations_batch = (get_layer_activations_from_batch(model, layers, data, output_device, mode, model_device))
-                for layer in layers:
-                    activations[layer].append(activations_batch[layer])
+            activations_batch = (get_layer_activations_from_batch(model, layers, data, output_device, mode, model_device))
+            for layer_name in layers:
+                if layer_name not in activations.keys(): 
+                    activations[layer_name] = []
+                    
+                activations[layer_name].append(activations_batch[layer_name])
 
         return activations
 
