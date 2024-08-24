@@ -211,7 +211,7 @@ def train_saes_in_batches(model, layers, saes, loader_model, sparsity_weight, le
                 # Backward pass and optimization
                 loss.backward()
                 optimizer.step()
-                if batch_idx % 100:
+                if batch_idx % 100 == 0:
                     print(f"Batch #{batch_idx}/{len(loader_model)}.")
 
         print(f'Epoch [{epoch + 1}/{num_epochs}] completed in {time() - start_time} seconds.')
