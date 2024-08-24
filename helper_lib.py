@@ -9,6 +9,7 @@ from collections import OrderedDict
 from IPython.display import clear_output
 import torch.nn.functional as F
 
+
 def get_device(model):
     return next(model.parameters()).device
 
@@ -55,7 +56,7 @@ def save_layer_shapes(model, input_shape=None, get_output_shape=None):
 
         def fw_hook(module, input, output):
             if len(input) == 1:
-                module.input_shape = input[0].shape # input[0] because pytorch returns a tuple for the input
+                module.input_shape = input[0].shape  # input[0] because pytorch returns a tuple for the input
             else:
                 print("Warning. Non-standard input shape. Input shape doesn't get stored.")
 
@@ -148,11 +149,12 @@ def get_layer_activations_from_dataset(model, layers, loader, output_device, mod
 
         for data, _ in loader:
 
-            activations_batch = (get_layer_activations_from_batch(model, layers, data, output_device, mode, model_device))
+            activations_batch = (
+                get_layer_activations_from_batch(model, layers, data, output_device, mode, model_device))
             for layer_name in layers:
-                if layer_name not in activations.keys(): 
+                if layer_name not in activations.keys():
                     activations[layer_name] = []
-                    
+
                 activations[layer_name].append(activations_batch[layer_name])
 
         return activations
@@ -180,16 +182,15 @@ def train_saes_in_batches(model, layers, saes, loader_model, sparsity_weight, le
 
     optimizers = {name: optim.Adam(sae.parameters(), lr=learning_rate) for name, sae in saes.items()}
 
-    
     for epoch in range(num_epochs):
         start_time = time()
         for batch_idx, (data, _) in enumerate(loader_model):
             activations = get_layer_activations_from_batch(model,
-                layers,
-                data.to(device),
-                output_device=device,
-                mode=mode
-            )
+                                                           layers,
+                                                           data.to(device),
+                                                           output_device=device,
+                                                           mode=mode
+                                                           )
 
             for name, sae in saes.items():
                 optimizer = optimizers[name]
@@ -211,9 +212,9 @@ def train_saes_in_batches(model, layers, saes, loader_model, sparsity_weight, le
                 loss.backward()
                 optimizer.step()
                 if batch_idx % 100:
-                    print(f"Batch #{batch_idx}/{len(loader)}.")
+                    print(f"Batch #{batch_idx}/{len(loader_model)}.")
 
-        print(f'Epoch [{epoch + 1}/{num_epochs}] completed in {time()-start_time} seconds.')
+        print(f'Epoch [{epoch + 1}/{num_epochs}] completed in {time() - start_time} seconds.')
 
     print('Training completed.')
 
@@ -345,28 +346,27 @@ def last_layer_sae_info(sae, activations, labels):
             - neither (list): Indices where neither the original nor reconstructed activations produce correct predictions.
     """
 
-
     both, only_model, only_rec, neither = ([] for i in range(4))
 
     with torch.no_grad():
-      for i in range(len(activations)):
-        model_activations, y = activations[i], labels[i]
+        for i in range(len(activations)):
+            model_activations, y = activations[i], labels[i]
 
-        reconstructed_cnn_activations = sae(model_activations)[-1].detach().cpu()
+            reconstructed_cnn_activations = sae(model_activations)[-1].detach().cpu()
 
-        prediction = torch.argmax(model_activations).item()
-        rec_prediction = torch.argmax(reconstructed_cnn_activations).item()
+            prediction = torch.argmax(model_activations).item()
+            rec_prediction = torch.argmax(reconstructed_cnn_activations).item()
 
-        if prediction == y:
-          if rec_prediction == y:
-            both.append(i)
-          else:
-            only_model.append(i)
-        else:
-          if rec_prediction == y:
-            only_rec.append(i)
-          else:
-            neither.append(i)
+            if prediction == y:
+                if rec_prediction == y:
+                    both.append(i)
+                else:
+                    only_model.append(i)
+            else:
+                if rec_prediction == y:
+                    only_rec.append(i)
+                else:
+                    neither.append(i)
 
     return both, only_model, only_rec, neither
 
@@ -391,78 +391,76 @@ def visualize_ims(images, channel, text=None):
         plt.title(text)
     plt.show()
 
-def store_activations(module, hook_name):
+def store_activations(module, hook_name, mode='activations'):
     """
-    Create a hook to store output activations of a module.
-
-    Args:
-        module (torch.nn.Module): The module to attach the hook to.
-
-    Returns:
-    """
-
-    if not hasattr(module, 'stored_activations'):
-        module.stored_activations = torch.zeros(module.output_shape)
-    else:
-        print("Output activations are already being stored. A duplicate hook has been created.\nTo reset, use remove_all_forward_hooks_old().")
-
-    def storing_activations_hook(module, input, output):
-        module.stored_activations = output
-
-    hook_handle = module.register_forward_hook(storing_activations_hook)
-
-    def custom_remove():
-        # Custom action to delete stored activations
-        if hasattr(module, 'stored_activations'):
-            del module.stored_activations
-            print(f"Stored activations removed from {module}.")
-        # Remove the hook
-        hook_handle.remove()
-
-    hook_handle.custom_remove = custom_remove
-
-    if not hasattr(module, 'hooks'):
-        module.hooks = {}
-
-    module.hooks[hook_name] = (hook_handle)
-
-def store_inputs(module, hook_name):
-    """
-    Create a hook to store input activations of a module.
+    Create a hook to store activations (inputs or outputs) of a module.
 
     Args:
         module (torch.nn.Module): The module to attach the hook to.
         hook_name (str): Name of the hook.
+        mode (str): Either 'activations' or 'inputs', specifying what to store.
 
     Returns:
+        None
     """
 
-    def storing_input_activations_hook(module, input, output):
-        if len(input) != 1:
-            print("Warning: Non-standard input shape.")
-        module.stored_inputs = input[0]
-
-    if not hasattr(module, 'stored_inputs'):
-        module.stored_inputs = torch.zeros(module.input_shape)
+    # Determine the appropriate attribute and message based on the mode
+    if mode == 'activations' or mode == 'outputs':
+        storage_attr = 'stored_activations'
+        warning_message = "Output activations are already being stored."
+    elif mode == 'inputs':
+        storage_attr = 'stored_inputs'
+        warning_message = "Input activations are already being stored."
     else:
-        print("Input activations are already being stored. A duplicate hook has been created.\nTo reset, use remove_all_forward_hooks_old().")
+        raise ValueError("Invalid mode. Use 'activations'/'outputs' or 'inputs'.")
 
-    hook_handle = module.register_forward_hook(storing_input_activations_hook)
+    # Check if the module is already storing data
+    if hasattr(module, storage_attr):
+        if hasattr(module, 'hooks'):
+            if hook_name not in module.hooks:
+                print(f"Warning: Hook with name {hook_name} is not in the hooks list of the module.")
+            else:
+                print(warning_message)
+            print("New hook will not be created.")
+            return
+        else:
+            raise ValueError(f"Error: Module has the attribute '{storage_attr}' but no hooks list.")
 
+    # Initialize storage for activations or inputs
+    if mode == 'activations':
+        module.stored_activations = torch.zeros(module.output_shape)
+    elif mode == 'inputs':
+        module.stored_inputs = torch.zeros(module.input_shape)
+
+    # Define the hook function based on the mode
+    def storing_hook(module, input, output):
+        if mode == 'activations':
+            module.stored_activations = output
+        elif mode == 'inputs':
+            if len(input) != 1:
+                print("Warning: Non-standard input shape.")
+            module.stored_inputs = input[0]
+
+    # Register the forward hook
+    hook_handle = module.register_forward_hook(storing_hook)
+
+    # Define the custom remove function
     def custom_remove():
-        # Custom action to delete stored inputs
-        if hasattr(module, 'stored_inputs'):
-            del module.stored_inputs
-            print(f"Stored inputs removed from {module}.")
-        # Remove the hook
+        if hasattr(module, storage_attr):
+            delattr(module, storage_attr)
+        if hasattr(module, 'hooks'):
+            del module.hooks[hook_name]
+            print(f"Storing {mode} hook was successfully removed.")
         hook_handle.remove()
 
+    # Attach the custom remove function to the hook handle
     hook_handle.custom_remove = custom_remove
 
+    # Ensure the module has a hooks dictionary and store the hook
     if not hasattr(module, 'hooks'):
         module.hooks = {}
 
-    module.hooks[hook_name] = (hook_handle)
+    module.hooks[hook_name] = hook_handle
 
 def print_registered_forward_hooks(model, model_name=None, *, old=False):
     """
@@ -501,7 +499,9 @@ def remove_all_forward_hooks(model):
     for child in model.children():
         if child is not None:
             if hasattr(child, 'hooks'):
-                for name, handle in child.hooks.items():
+                child_hooks_copy = child.hooks.copy()
+
+                for name, handle in child_hooks_copy.items():
                     if hasattr(handle, 'custom_remove'):
                         handle.custom_remove()
                     else:
@@ -509,19 +509,9 @@ def remove_all_forward_hooks(model):
 
                 del child.hooks
 
-            remove_all_forward_hooks(child)
+                if hasattr(child, "_forward_hooks"):
+                    child._forward_hooks = OrderedDict()
 
-def remove_all_forward_hooks_old(model):
-    """
-    Remove all forward hooks from the model.
-
-    Args:
-        model (torch.nn.Module): The model from which to remove all forward hooks.
-    """
-    for child in model.children():
-        if child is not None:
-            if hasattr(child, "_forward_hooks"):
-                child._forward_hooks = OrderedDict()
             remove_all_forward_hooks(child)
 
 def optim_inputs_for_neurons_in_layer(model, layer, device, mode='activations', neuron_indices=None, init_inputs=None,
@@ -595,7 +585,8 @@ def optim_inputs_for_neurons_in_layer(model, layer, device, mode='activations', 
 
         if step % (num_steps // 10) == 0:
             print(f"step#{step + 1}")
-            print(f"Original loss: {original_loss.item()}, Rotation loss: {rotation_loss.item()}, Sparsity loss: {image_sparsity * torch.sum(optimized_inputs).item()}")
+            print(
+                f"Original loss: {original_loss.item()}, Rotation loss: {rotation_loss.item()}, Sparsity loss: {image_sparsity * torch.sum(optimized_inputs).item()}")
             print(f"Activations: {_get_layer_activations(layer_on_device, mode)}")
 
     return optimized_inputs.detach()
@@ -644,12 +635,12 @@ def fgsm_test(model, epsilon, loader, device, *, to_store_init_data=False):
         # Forward pass the data through the model
         output = model(data)
 
-        init_preds = output.max(1)[1] # get the index of the max
+        init_preds = output.max(1)[1]  # get the index of the max
 
         num_to_store = 5
 
         if epsilon != 0:
-        # Calculate the loss
+            # Calculate the loss
             vectorized_targets = torch.eye(10).to(device)[targets]
             loss = F.mse_loss(output, vectorized_targets)
 
@@ -669,14 +660,14 @@ def fgsm_test(model, epsilon, loader, device, *, to_store_init_data=False):
             output = model(perturbed_data)
 
             # Check for success
-            final_preds = output.max(1)[1] # get the index of the max log-probability
+            final_preds = output.max(1)[1]  # get the index of the max log-probability
             # shape: (B,)
 
             with torch.no_grad():
                 correct += torch.sum(final_preds == targets)
 
                 if len(adv_examples) < num_to_store:
-                    adv_ex_batch = perturbed_data.squeeze(0).cpu()    # shape: B, shape of data
+                    adv_ex_batch = perturbed_data.squeeze(0).cpu()  # shape: B, shape of data
 
                     mask = ((init_preds == targets) & (final_preds != targets)).cpu()
 
@@ -697,7 +688,7 @@ def fgsm_test(model, epsilon, loader, device, *, to_store_init_data=False):
                     adv_examples.extend(zip(*tuple_to_zip))
 
 
-        else: # epsilon == 0
+        else:  # epsilon == 0
             with torch.no_grad():
                 mask = (init_preds == targets).cpu()
                 correct += torch.sum(mask)
@@ -715,15 +706,14 @@ def fgsm_test(model, epsilon, loader, device, *, to_store_init_data=False):
                     ]
 
                     if to_store_init_data:
-                        tuple_to_zip.append(init_preds[mask][:examples_to_add]) # note: inefficient, done to have the same structure as in the eps != 0 case.
-
+                        tuple_to_zip.append(init_preds[mask][
+                                            :examples_to_add])  # note: inefficient, done to have the same structure as in the eps != 0 case.
 
                     # Extend `adv_examples` with the appropriate elements
                     adv_examples.extend(zip(*tuple_to_zip))
 
-
     # Calculate final accuracy for this epsilon
-    final_acc = correct/float(len(loader) * loader.batch_size)
+    final_acc = correct / float(len(loader) * loader.batch_size)
     print(f"Epsilon: {epsilon}\tTest Accuracy = {correct} / {len(loader) * loader.batch_size} = {final_acc}")
 
     # Return the accuracy and an adversarial example
