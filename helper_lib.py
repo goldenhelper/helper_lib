@@ -481,7 +481,7 @@ def print_registered_forward_hooks(model, model_name=None, *, old=False):
         for name, module in model.named_children():
             if hasattr(module, 'hooks') and not old:
                 hooks = module.hooks
-                if len(hooks) != module._forward_hooks:
+                if len(hooks) != len(module._forward_hooks):
                     print("Warning: A discrepancy between hooks dict and _forward_hooks was detected.")
             else:
                 hooks = module._forward_hooks
