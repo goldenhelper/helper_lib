@@ -157,6 +157,7 @@ def get_layer_activations_from_dataset(model, layers, loader, output_device, mod
 
         return activations
 
+from time import time
 def train_saes_in_batches(model, layers, saes, loader_model, sparsity_weight, learning_rate, num_epochs, device, mode):
     """
     Train multiple Sparse Autoencoders (SAEs) on the activations from different layers of a model using batches.
@@ -179,7 +180,9 @@ def train_saes_in_batches(model, layers, saes, loader_model, sparsity_weight, le
 
     optimizers = {name: optim.Adam(sae.parameters(), lr=learning_rate) for name, sae in saes.items()}
 
+    
     for epoch in range(num_epochs):
+        start_time = time()
         for batch_idx, (data, _) in enumerate(loader_model):
             activations = get_layer_activations_from_batch(model,
                 layers,
@@ -207,8 +210,10 @@ def train_saes_in_batches(model, layers, saes, loader_model, sparsity_weight, le
                 # Backward pass and optimization
                 loss.backward()
                 optimizer.step()
+                if batch_idx % 100:
+                    print(f"Batch #{batch_idx}/{len(loader)}.")
 
-            print(f'Epoch [{epoch + 1}/{num_epochs}], Batch [{batch_idx + 1}/{len(loader_model)}]')
+        print(f'Epoch [{epoch + 1}/{num_epochs}] completed in {time()-start_time} seconds.')
 
     print('Training completed.')
 
