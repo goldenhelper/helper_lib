@@ -26,6 +26,23 @@ class SparseAutoencoder(nn.Module):
         decoded = torch.sigmoid(self.decoder(encoded))
         return encoded, decoded
 
+def get_module_by_name(model, name):
+    """
+    Recursively get a module within a model by its name.
+    
+    Args:
+        model (torch.nn.Module): The model containing the module.
+        name (str): The name of the module.
+
+    Returns:
+        torch.nn.Module: The module if found, else None.
+    """
+    if '.' not in name:
+        return model._modules.get(name, None)
+    else:
+        name_list = name.split('.')
+        return get_module_by_name(model._modules.get(name_list[0]), '.'.join(name_list[1:]))
+
 def save_layer_shapes(model, input_shape=None, get_output_shape=None):
     """
     Determine and store the input and output shapes for each layer in a model by running it on a 'meta' device.
@@ -56,30 +73,36 @@ def save_layer_shapes(model, input_shape=None, get_output_shape=None):
 
         def fw_hook(module, input, output):
             if len(input) == 1:
-                module.input_shape = input[0].shape  # input[0] because pytorch returns a tuple for the input
+                module.input_shape = input[0].shape
             else:
-                print("Warning. Non-standard input shape. Input shape doesn't get stored.")
+                module.input_shape = tuple(inp.shape for inp in input)
 
-            if hasattr(output, 'shape'):
+            if isinstance(output, torch.Tensor):
                 module.output_shape = output.shape
+            elif isinstance(output, (list, tuple)):
+                module.output_shape = tuple(out.shape for out in output if isinstance(out, torch.Tensor))
+            elif isinstance(output, dict):
+                module.output_shape = {k: v.shape for k, v in output.items() if isinstance(v, torch.Tensor)}
             else:
-                module.output_shape = get_output_shape(output)
+                raise ValueError(f"Unsupported output type: {type(output)}")
 
         # Register hooks to capture input/output shapes
         hook_handles = []
         for name, layer in model_on_meta.named_modules():
-            handle = layer.register_forward_hook(fw_hook)
-            hook_handles.append(handle)
+            if not hasattr(layer, 'output_shape'):
+                handle = layer.register_forward_hook(fw_hook)
+                hook_handles.append(handle)
 
         # Perform a forward pass to trigger the hooks
         model_on_meta(inp)
 
     # Copy the input/output shapes back to the original model's layers
     for name, layer in model.named_modules():
-        if name != '':
-            if hasattr(model_on_meta._modules[name], 'output_shape'):
-                layer.input_shape = model_on_meta._modules[name].input_shape
-                layer.output_shape = model_on_meta._modules[name].output_shape
+        layer_on_meta = get_module_by_name(model_on_meta, name)
+
+        if name != '' and hasattr(layer_on_meta, 'output_shape'):
+            layer.input_shape = layer_on_meta.input_shape
+            layer.output_shape = layer_on_meta.output_shape
 
     return {name: (layer.input_shape, layer.output_shape) for name, layer in model.named_modules() if
             hasattr(layer, 'output_shape')}
@@ -391,7 +414,7 @@ def visualize_ims(images, channel, text=None):
         plt.title(text)
     plt.show()
 
-def store_activations(module, hook_name, mode='activations'):
+def store_activations(module, hook_name, mode='activations', *, shape=None):
     """
     Create a hook to store activations (inputs or outputs) of a module.
 
@@ -408,9 +431,11 @@ def store_activations(module, hook_name, mode='activations'):
     if mode == 'activations' or mode == 'outputs':
         storage_attr = 'stored_activations'
         warning_message = "Output activations are already being stored."
+        shape_name = 'output_shape'
     elif mode == 'inputs':
         storage_attr = 'stored_inputs'
         warning_message = "Input activations are already being stored."
+        shape_name = 'input_shape'
     else:
         raise ValueError("Invalid mode. Use 'activations'/'outputs' or 'inputs'.")
 
@@ -426,11 +451,18 @@ def store_activations(module, hook_name, mode='activations'):
         else:
             raise ValueError(f"Error: Module has the attribute '{storage_attr}' but no hooks list.")
 
+    if shape is None:
+        if hasattr(module, shape_name):
+            shape = getattr(module, shape_name)
+        else:
+            raise ValueError(f"No {shape_name} was provided and the module doesn't have the attribute .{shape_name}.")
+
+
     # Initialize storage for activations or inputs
     if mode == 'activations':
-        module.stored_activations = torch.zeros(module.output_shape)
+        module.stored_activations = torch.zeros(shape)
     elif mode == 'inputs':
-        module.stored_inputs = torch.zeros(module.input_shape)
+        module.stored_inputs = torch.zeros(shape)
 
     # Define the hook function based on the mode
     def storing_hook(module, input, output):
