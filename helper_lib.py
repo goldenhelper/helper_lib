@@ -551,7 +551,9 @@ def remove_all_forward_hooks(model):
 def optim_inputs_for_neurons_in_layer(model, layer, device, mode='activations', neuron_indices=None, init_inputs=None,
                                       alpha=20.0, image_sparsity=50.0, num_steps=1000):
     """
-    Optimize input images to maximize the activation of specific neurons in a given layer.
+    Optimize input images to maximize the activation of specific neurons in a given layer. 
+    For correct functioning, the `layer` has to have the attribute stored_activations/stored_inputs (depending on the mode).
+    The function save_layer_shapes can be used.
 
     Args:
         model (torch.nn.Module): The model containing the target layer.
@@ -617,7 +619,7 @@ def optim_inputs_for_neurons_in_layer(model, layer, device, mode='activations', 
         total_loss.backward()
         optimizer.step()
 
-        if step % (num_steps // 10) == 0:
+        if (step + 1) % (num_steps // 10) == 0:
             print(f"step#{step + 1}")
             print(
                 f"Original loss: {original_loss.item()}, Rotation loss: {rotation_loss.item()}, Sparsity loss: {image_sparsity * torch.sum(optimized_inputs).item()}")
