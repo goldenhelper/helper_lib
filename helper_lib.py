@@ -334,24 +334,6 @@ def create_sae(layer, device, *, mode=None, encoding_size=None, sae_class=Sparse
 
     return sae.to(device)
 
-def visualize(nums, dataset):
-    """
-    Visualize a set of images from a dataset given their indices.
-
-    Args:
-        nums (list): List of indices of images to visualize.
-        dataset (torch.utils.data.Dataset): Dataset containing the images.
-    """
-    figure = plt.figure(figsize=(8, 8))
-    side_length = math.ceil(math.sqrt(len(nums)))
-    for i in range(len(nums)):
-        img = dataset[nums[i]][0].squeeze()
-        label = dataset[nums[i]][1]
-        figure.add_subplot(side_length, side_length, i + 1)
-        plt.axis("off")
-        plt.imshow(img.squeeze(), cmap="gray")
-    plt.show()
-
 def last_layer_sae_info(sae, activations, labels):
     """
     Evaluate the performance of a Sparse Autoencoder (SAE) on the last layer's activations.
@@ -392,27 +374,6 @@ def last_layer_sae_info(sae, activations, labels):
                     neither.append(i)
 
     return both, only_model, only_rec, neither
-
-def visualize_ims(images, channel, text=None):
-    """
-    Visualize a batch of images along a specific channel.
-
-    Args:
-        images (torch.Tensor): A batch of images to visualize.
-        channel (int): The channel of the images to visualize.
-        text (str, optional): Optional title for the visualization.
-    """
-    images = images.detach()
-    figure = plt.figure(figsize=(8, 8))
-    side_length = math.ceil(math.sqrt(len(images)))
-    for i in range(len(images)):
-        img = images[i, channel].cpu()
-        figure.add_subplot(side_length, side_length, i + 1)
-        plt.axis("off")
-        plt.imshow(img.squeeze(), cmap="gray")
-    if text:
-        plt.title(text)
-    plt.show()
 
 def store_activations(module, hook_name, mode='activations', *, shape=None):
     """
@@ -755,6 +716,47 @@ def fgsm_test(model, epsilon, loader, device, *, to_store_init_data=False):
     # Return the accuracy and an adversarial example
     return final_acc.item(), adv_examples
 
+
+# Miscalleneous functions
+def visualize(nums, dataset):
+    """
+    Visualize a set of images from a dataset given their indices.
+
+    Args:
+        nums (list): List of indices of images to visualize.
+        dataset (torch.utils.data.Dataset): Dataset containing the images.
+    """
+    figure = plt.figure(figsize=(8, 8))
+    side_length = math.ceil(math.sqrt(len(nums)))
+    for i in range(len(nums)):
+        img = dataset[nums[i]][0].squeeze()
+        label = dataset[nums[i]][1]
+        figure.add_subplot(side_length, side_length, i + 1)
+        plt.axis("off")
+        plt.imshow(img.squeeze(), cmap="gray")
+    plt.show()
+
+def visualize_ims(images, channel, text=None):
+    """
+    Visualize a batch of images along a specific channel.
+
+    Args:
+        images (torch.Tensor): A batch of images to visualize.
+        channel (int): The channel of the images to visualize.
+        text (str, optional): Optional title for the visualization.
+    """
+    images = images.detach()
+    figure = plt.figure(figsize=(8, 8))
+    side_length = math.ceil(math.sqrt(len(images)))
+    for i in range(len(images)):
+        img = images[i, channel].cpu()
+        figure.add_subplot(side_length, side_length, i + 1)
+        plt.axis("off")
+        plt.imshow(img.squeeze(), cmap="gray")
+    if text:
+        plt.title(text)
+    plt.show()
+
 def bar_diagram(activations_to_vis, figsize):
     """
     Plot a bar diagram of the given activations.
@@ -777,4 +779,3 @@ def bar_diagram(activations_to_vis, figsize):
     plt.title('Sparse representation')
     plt.tight_layout()
     plt.show()
-
