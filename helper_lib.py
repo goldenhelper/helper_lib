@@ -754,4 +754,5 @@ def bar_diagram(activations_to_vis, figsize):
     plt.ylabel('Value')
     plt.title('Sparse representation')
     plt.tight_layout()
+    plt.colorbar()
     plt.show()
