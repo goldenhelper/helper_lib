@@ -481,7 +481,7 @@ def print_registered_forward_hooks(model, model_name=None, *, old=False):
 
             if hooks:
                 for hook_name, hook in hooks.items():
-                    print(f"Module: {model_name}.{name}, Hook name/ID: {hook_name}")
+                    print(f"\tModule: {model_name}.{name}, Hook name/ID: {hook_name}")
 
 def remove_all_forward_hooks(model):
     """
@@ -745,7 +745,6 @@ def visualize_ims(images, channel, text=None):
         channel (int): The channel of the images to visualize.
         text (str, optional): Optional title for the visualization.
     """
-    images = images.detach()
     figure = plt.figure(figsize=(8, 8))
     side_length = math.ceil(math.sqrt(len(images)))
     for i in range(len(images)):
