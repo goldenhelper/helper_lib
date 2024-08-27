@@ -715,7 +715,8 @@ def fgsm_test(model, epsilon, loader, device, *, num_to_store=5, to_store_init_d
     # Return the accuracy and an adversarial example
     return final_acc.item(), adv_examples
 
-def visualize_ims(images, channel, cmap='seismic'):
+import matplotlib.colors
+def visualize_ims(images, channel, cmap='coolwarm', norm=matplotlib.colors.CenteredNorm()):
     """
     Visualize a batch of images along a specific channel.
 
@@ -730,7 +731,7 @@ def visualize_ims(images, channel, cmap='seismic'):
         img = images[i][channel].cpu()
         figure.add_subplot(side_length, side_length, i + 1)
         plt.axis("off")
-        plt.imshow(img.squeeze(), cmap=cmap)
+        plt.imshow(img.squeeze(), cmap=cmap, norm=norm)
     plt.show()
 
 def bar_diagram(activations_to_vis, figsize):
