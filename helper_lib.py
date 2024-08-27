@@ -601,7 +601,7 @@ def fgsm_attack(data, epsilon, data_grad):
     # Return the perturbed image
     return perturbed_data
 
-def fgsm_test(model, epsilon, loader, device, *, to_store_init_data=False):
+def fgsm_test(model, epsilon, loader, device, *, num_to_store=5, to_store_init_data=True):
     """
     Evaluate the model under adversarial attack using the FGSM method.
 
@@ -610,6 +610,7 @@ def fgsm_test(model, epsilon, loader, device, *, to_store_init_data=False):
         epsilon (float): The magnitude of the adversarial perturbation.
         loader (torch.utils.data.DataLoader): DataLoader containing the test dataset.
         device (torch.device): The device to run the evaluation on.
+        num_to_store (int): Number of examples to store for each epsilon.
         to_store_init_data (bool, optional): If True, stores the initial data before perturbation.
 
     Returns:
@@ -633,8 +634,6 @@ def fgsm_test(model, epsilon, loader, device, *, to_store_init_data=False):
         output = model(data)
 
         init_preds = output.max(1)[1]  # get the index of the max
-
-        num_to_store = 5
 
         if epsilon != 0:
             # Calculate the loss
