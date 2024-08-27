@@ -9,7 +9,6 @@ from collections import OrderedDict
 from IPython.display import clear_output
 import torch.nn.functional as F
 
-
 def get_device(model):
     return next(model.parameters()).device
 
@@ -29,7 +28,7 @@ class SparseAutoencoder(nn.Module):
 def get_module_by_name(model, name):
     """
     Recursively get a module within a model by its name.
-    
+
     Args:
         model (torch.nn.Module): The model containing the module.
         name (str): The name of the module.
@@ -375,6 +374,22 @@ def last_layer_sae_info(sae, activations, labels):
 
     return both, only_model, only_rec, neither
 
+def default_custom_remove(module, hook_handle, hook_name, is_pre_hook, message=0):
+    if message == 0:
+        message = f"{hook_name} hook was succesfully removed."
+
+    if is_pre_hook:
+        if hasattr(module, 'pre_hooks'):
+            del module.pre_hooks[hook_name]
+    else:
+        if hasattr(module, 'hooks'):
+            del module.hooks[hook_name]
+
+    if message:
+        print(message)
+
+    hook_handle.remove()
+
 def store_activations(module, hook_name, mode='activations', *, shape=None):
     """
     Create a hook to store activations (inputs or outputs) of a module.
@@ -404,7 +419,7 @@ def store_activations(module, hook_name, mode='activations', *, shape=None):
     if hasattr(module, storage_attr):
         if hasattr(module, 'hooks'):
             if hook_name not in module.hooks:
-                print(f"Warning: Hook with name {hook_name} is not in the hooks list of the module.")
+                print(f"Warning: The module has attribute {storage_attr} but {hook_name} is not in the hooks list of the module.")
             else:
                 print(warning_message)
             print("New hook will not be created.")
@@ -418,7 +433,6 @@ def store_activations(module, hook_name, mode='activations', *, shape=None):
         else:
             raise ValueError(f"No {shape_name} was provided and the module doesn't have the attribute .{shape_name}.")
 
-
     # Initialize storage for activations or inputs
     if mode == 'activations':
         module.stored_activations = torch.zeros(shape)
@@ -431,7 +445,7 @@ def store_activations(module, hook_name, mode='activations', *, shape=None):
             module.stored_activations = output
         elif mode == 'inputs':
             if len(input) != 1:
-                print("Warning: Non-standard input shape.")
+                print("Warning: Non-standard input shape or something.")
             module.stored_inputs = input[0]
 
     # Register the forward hook
@@ -455,9 +469,26 @@ def store_activations(module, hook_name, mode='activations', *, shape=None):
 
     module.hooks[hook_name] = hook_handle
 
-def print_registered_forward_hooks(model, model_name=None, *, old=False):
+def custom_input_pre_hook(module, input_to_substitute, hook_name='custom_input'):
+    def hook(module, input):
+        if hasattr(input[0], 'shape'):
+            assert input[0].shape == input_to_substitute.shape
+
+        return (input_to_substitute,)
+
+    hook_handle = module.register_forward_pre_hook(hook)
+
+    # Register the forward hook
+    if not hasattr(module, 'pre_hooks'):
+        module.pre_hooks = {}
+
+    module.pre_hooks[hook_name] = hook_handle
+    # Attach the custom remove function to the hook handle
+    hook_handle.custom_remove = lambda: default_custom_remove(module, hook_handle, hook_name, is_pre_hook=True)
+
+def print_registered_hooks(model, model_name=None, *, old=False):
     """
-    Print all registered forward hooks in the model.
+    Print all registered forward and pre-hooks in the model.
 
     Args:
         model (torch.nn.Module): The model whose hooks are to be printed.
@@ -467,21 +498,37 @@ def print_registered_forward_hooks(model, model_name=None, *, old=False):
     if model_name is None:
         model_name = model.__class__.__name__
 
-    print(f"Registered forward hooks of {model_name}:")
-    if hasattr(model, 'hooks'):
-        print(model.hooks)
-    else:
-        for name, module in model.named_children():
-            if hasattr(module, 'hooks') and not old:
-                hooks = module.hooks
-                if len(hooks) != len(module._forward_hooks):
-                    print("Warning: A discrepancy between hooks dict and _forward_hooks was detected.")
-            else:
-                hooks = module._forward_hooks
+    print(f"Registered hooks of {model_name}:")
 
-            if hooks:
-                for hook_name, hook in hooks.items():
-                    print(f"\tModule: {model_name}.{name}, Hook name/ID: {hook_name}")
+    def print_hooks(hooks, hook_type, module_name):
+        if hooks:
+            for hook_name, hook in hooks.items():
+                print(f"\tModule: {module_name}, {hook_type} name/ID: {hook_name}")
+
+    if hasattr(model, 'hooks'):
+        print_hooks(model.hooks, "Forward Hook", model_name)
+    if hasattr(model, 'pre_hooks'):
+        print_hooks(model.pre_hooks, "Pre-Hook", model_name)
+
+    for name, module in model.named_children():
+        module_name = f"{model_name}.{name}"
+        
+        if hasattr(module, 'pre_hooks') and not old:
+            pre_hooks = module.pre_hooks
+            if len(pre_hooks) != len(module._forward_pre_hooks):
+                print("Warning: A discrepancy between pre_hooks dict and _forward_pre_hooks was detected.")
+        else:
+            pre_hooks = module._forward_pre_hooks
+
+        if hasattr(module, 'hooks') and not old:
+            hooks = module.hooks
+            if len(hooks) != len(module._forward_hooks):
+                print("Warning: A discrepancy between hooks dict and _forward_hooks was detected.")
+        else:
+            hooks = module._forward_hooks
+
+        print_hooks(pre_hooks, "Pre-Hook", module_name)
+        print_hooks(hooks, "Forward Hook", module_name)
 
 def remove_all_forward_hooks(model):
     """
@@ -509,10 +556,36 @@ def remove_all_forward_hooks(model):
 
             remove_all_forward_hooks(child)
 
+def remove_all_forward_pre_hooks(model):
+    """
+    Remove all forward pre_hooks from the model.
+
+    Args:
+        model (torch.nn.Module): The model from which to remove all forward pre_hooks.
+    """
+
+    for child in model.children():
+        if child is not None:
+            if hasattr(child, 'pre_hooks'):
+                child_pre_hooks_copy = child.pre_hooks.copy()
+
+                for name, handle in child_pre_hooks_copy.items():
+                    if hasattr(handle, 'custom_remove'):
+                        handle.custom_remove()
+                    else:
+                        handle.remove()
+
+                del child.pre_hooks
+
+                if hasattr(child, "_forward_pre_hooks"):
+                    child._forward_pre_hooks = OrderedDict()
+
+            remove_all_forward_pre_hooks(child)
+
 def optim_inputs_for_neurons_in_layer(model, layer, device, mode='activations', neuron_indices=None, init_inputs=None,
                                       alpha=20.0, image_sparsity=50.0, num_steps=1000):
     """
-    Optimize input images to maximize the activation of specific neurons in a given layer. 
+    Optimize input images to maximize the activation of specific neurons in a given layer.
     For correct functioning, the `layer` has to have the attribute stored_activations/stored_inputs (depending on the mode).
     The function save_layer_shapes can be used.
 
