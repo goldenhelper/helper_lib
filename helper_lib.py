@@ -715,27 +715,7 @@ def fgsm_test(model, epsilon, loader, device, *, num_to_store=5, to_store_init_d
     # Return the accuracy and an adversarial example
     return final_acc.item(), adv_examples
 
-
-# Miscalleneous functions
-def visualize(nums, dataset):
-    """
-    Visualize a set of images from a dataset given their indices.
-
-    Args:
-        nums (list): List of indices of images to visualize.
-        dataset (torch.utils.data.Dataset): Dataset containing the images.
-    """
-    figure = plt.figure(figsize=(8, 8))
-    side_length = math.ceil(math.sqrt(len(nums)))
-    for i in range(len(nums)):
-        img = dataset[nums[i]][0].squeeze()
-        label = dataset[nums[i]][1]
-        figure.add_subplot(side_length, side_length, i + 1)
-        plt.axis("off")
-        plt.imshow(img.squeeze(), cmap="gray")
-    plt.show()
-
-def visualize_ims(images, channel, text=None):
+def visualize_ims(images, channel, cmap='seismic'):
     """
     Visualize a batch of images along a specific channel.
 
@@ -750,7 +730,7 @@ def visualize_ims(images, channel, text=None):
         img = images[i, channel].cpu()
         figure.add_subplot(side_length, side_length, i + 1)
         plt.axis("off")
-        plt.imshow(img.squeeze(), cmap="gray")
+        plt.imshow(img.squeeze(), cmap=cmap)
     if text:
         plt.title(text)
     plt.show()
