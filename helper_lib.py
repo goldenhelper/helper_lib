@@ -727,7 +727,7 @@ def visualize_ims(images, channel, cmap='seismic'):
     figure = plt.figure(figsize=(8, 8))
     side_length = math.ceil(math.sqrt(len(images)))
     for i in range(len(images)):
-        img = images[i, channel].cpu()
+        img = images[i][channel].cpu()
         figure.add_subplot(side_length, side_length, i + 1)
         plt.axis("off")
         plt.imshow(img.squeeze(), cmap=cmap)
