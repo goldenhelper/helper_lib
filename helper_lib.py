@@ -731,8 +731,6 @@ def visualize_ims(images, channel, cmap='seismic'):
         figure.add_subplot(side_length, side_length, i + 1)
         plt.axis("off")
         plt.imshow(img.squeeze(), cmap=cmap)
-    if text:
-        plt.title(text)
     plt.show()
 
 def bar_diagram(activations_to_vis, figsize):
