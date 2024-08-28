@@ -469,7 +469,7 @@ def store_activations(module, hook_name, mode='activations', *, shape=None):
 
     module.hooks[hook_name] = hook_handle
 
-def custom_input_pre_hook(module, func, hook_name='custom_input'):
+def custom_input_pre_hook(module, func, hook_name='custom_input', message=0):
     def hook(module, input):
         input_to_substitute = func(input)
         if hasattr(input[0], 'shape'):
@@ -485,7 +485,7 @@ def custom_input_pre_hook(module, func, hook_name='custom_input'):
 
     module.pre_hooks[hook_name] = hook_handle
     # Attach the custom remove function to the hook handle
-    hook_handle.custom_remove = lambda: default_custom_remove(module, hook_handle, hook_name, is_pre_hook=True)
+    hook_handle.custom_remove = lambda: default_custom_remove(module, hook_handle, hook_name, is_pre_hook=True, message=message)
 
 def custom_input_pre_hook_old(module, input_to_substitute, hook_name='custom_input'):
     # deprecated
