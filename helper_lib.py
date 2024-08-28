@@ -803,7 +803,7 @@ def visualize_ims(images, channel, cmap='coolwarm', norm=matplotlib.colors.Cente
     if figsize is None:
         figsize = (side_length, side_length)
     
-    figure = plt.figure(figsize=figsize))
+    figure = plt.figure(figsize=figsize)
     
     for i in range(len(images)):
         img = images[i][channel].cpu()
