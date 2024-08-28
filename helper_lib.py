@@ -789,7 +789,7 @@ def fgsm_test(model, epsilon, loader, device, *, num_to_store=5, to_store_init_d
     return final_acc.item(), adv_examples
 
 import matplotlib.colors
-def visualize_ims(images, channel, cmap='coolwarm', norm=matplotlib.colors.CenteredNorm()):
+def visualize_ims(images, channel, cmap='coolwarm', norm=matplotlib.colors.CenteredNorm(), figsize=None):
     """
     Visualize a batch of images along a specific channel.
 
@@ -798,13 +798,19 @@ def visualize_ims(images, channel, cmap='coolwarm', norm=matplotlib.colors.Cente
         channel (int): The channel of the images to visualize.
         text (str, optional): Optional title for the visualization.
     """
-    figure = plt.figure(figsize=(8, 8))
+   
     side_length = math.ceil(math.sqrt(len(images)))
+    if figsize is None:
+        figsize = (side_length, side_length)
+    
+    figure = plt.figure(figsize=figsize))
+    
     for i in range(len(images)):
         img = images[i][channel].cpu()
         figure.add_subplot(side_length, side_length, i + 1)
         plt.axis("off")
         plt.imshow(img.squeeze(), cmap=cmap, norm=norm)
+    plt.colorbar()
     plt.show()
 
 def bar_diagram(activations_to_vis, figsize):
@@ -828,5 +834,5 @@ def bar_diagram(activations_to_vis, figsize):
     plt.ylabel('Value')
     plt.title('Sparse representation')
     plt.tight_layout()
-    plt.colorbar()
+    
     plt.show()
