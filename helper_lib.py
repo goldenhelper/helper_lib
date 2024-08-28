@@ -788,31 +788,55 @@ def fgsm_test(model, epsilon, loader, device, *, num_to_store=5, to_store_init_d
     # Return the accuracy and an adversarial example
     return final_acc.item(), adv_examples
 
+import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.colors
-def visualize_ims(images, channel, cmap='coolwarm', norm=matplotlib.colors.CenteredNorm(), figsize=None):
+
+def visualize_ims(images, channel, titles=None, fig_title=None, cmap='coolwarm', norm=matplotlib.colors.CenteredNorm(), show_colorbar=None, figsize=None):
     """
     Visualize a batch of images along a specific channel.
 
     Args:
         images (torch.Tensor): A batch of images to visualize.
         channel (int): The channel of the images to visualize.
-        text (str, optional): Optional title for the visualization.
+        titles (list of str, optional): Optional titles for the visualizations.
     """
-   
-    side_length = math.ceil(math.sqrt(len(images)))
+    num_images = len(images)
+    
+    side_length = math.ceil(math.sqrt(num_images))
+    
     if figsize is None:
-        figsize = (side_length, side_length)
+        figsize = (side_length * 3, side_length * 3)
     
-    figure = plt.figure(figsize=figsize)
-    
-    for i in range(len(images)):
-        img = images[i][channel].cpu()
-        figure.add_subplot(side_length, side_length, i + 1)
-        plt.axis("off")
-        plt.imshow(img.squeeze(), cmap=cmap, norm=norm)
-    plt.colorbar()
-    plt.show()
+    fig, axes = plt.subplots(side_length, side_length, figsize=figsize)
 
+    if num_images == 1:
+        axes = [axes]
+    else:
+        axes = axes.flatten()  # Flatten in case it's a 2D array
+
+    for i in range(num_images):
+        img = images[i][channel].cpu()
+        ax = axes[i]
+        im = ax.imshow(img.squeeze(), cmap=cmap, norm=norm)
+        ax.axis("off")
+        if titles:
+            ax.set_title(titles[i])
+
+        # Use AxesDivider to add a colorbar next to the image
+        if show_colorbar:
+          divider = make_axes_locatable(ax)
+          cax = divider.append_axes("right", size="5%", pad=0.05)
+          plt.colorbar(im, cax=cax)
+
+    # Hide any unused axes
+    for j in range(num_images, len(axes)):
+        axes[j].axis("off")
+
+    if fig_title:
+        plt.suptitle(fig_title, fontsize=16)
+
+    plt.show()
 def bar_diagram(activations_to_vis, figsize):
     """
     Plot a bar diagram of the given activations.
