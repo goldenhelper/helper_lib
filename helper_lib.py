@@ -1,4 +1,4 @@
-import torch, copy
+import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
 import torch.nn as nn
@@ -42,66 +42,61 @@ def get_module_by_name(model, name):
         name_list = name.split('.')
         return get_module_by_name(model._modules.get(name_list[0]), '.'.join(name_list[1:]))
 
-def save_layer_shapes(model, input_shape=None, get_output_shape=None):
+def save_layer_shapes(model, *, input=None, input_shape=None):
     """
-    Determine and store the input and output shapes for each layer in a model by running it on a 'meta' device.
-    This function creates a deep copy of the model, runs it on a 'meta' device to determine
-    input and output shapes, and then stores these shapes as attributes (`input_shape` and `output_shape`)
-    in the original model's layers.
-
-    Args:
-        model (torch.nn.Module): The model to analyze.
-        input_shape (tuple, optional): The expected input shape to the model. If not provided,
-                                       it must be stored as `input_shape` attribute in the model.
-        get_output_shape (callable, optional): A function to determine the output shape
-                                               for cases where `output` doesn't have a `shape` attribute.
+    Dfghnm,,lkm;mk,ijlkhygutyu7toy p;o 8; ,;',','iu,yutjrjidudrudru
+    tional): The expected input shape to the model. If not provided,
+        
+    it must b
+    e stored as `input_shape` attribute in the model.
+    get_output_shape (callable, opti
+    onal): A function to determine the output shape
+    for cases where `output` doesn't have a `shape` attribute.
 
     Returns:
         dict: A dictionary with layer names as keys and tuples of input/output shapes as values.
     """
+    
+    def guess_shape(obj):
+        if isinstance(obj, torch.Tensor):
+            shape = obj.shape
+        elif isinstance(obj, (list, tuple)):
+            shape = tuple(out.shape for out in obj if isinstance(out, torch.Tensor))
+        elif isinstance(obj, dict):
+            shape = {k: v.shape for k, v in obj.items() if isinstance(v, torch.Tensor)}
+        else:
+            raise TypeError(f"Unsupported output type: {type(obj)}")
+        
+        return shape
 
-    if input_shape is None:
+    if input_shape is None and input is None:
         if hasattr(model, 'input_shape'):
             input_shape = model.input_shape
         else:
             raise ValueError('The model does not have an input shape attribute nor it was passed into the function.')
 
-    with torch.device("meta"):
-        model_on_meta = copy.deepcopy(model).to('meta')
-        inp = torch.randn(input_shape, device='meta')
+    inp = torch.randn(input_shape, device=get_device(model)) if input is None else input
 
-        def fw_hook(module, input, output):
-            if len(input) == 1:
-                module.input_shape = input[0].shape
-            else:
-                module.input_shape = tuple(inp.shape for inp in input)
+    def fw_hook(module, input, output):
+        if len(input) == 1: # TODO: use guess_shape
+            module.input_shape = input[0].shape
+        else:
+            module.input_shape = tuple(inp.shape for inp in input)
 
-            if isinstance(output, torch.Tensor):
-                module.output_shape = output.shape
-            elif isinstance(output, (list, tuple)):
-                module.output_shape = tuple(out.shape for out in output if isinstance(out, torch.Tensor))
-            elif isinstance(output, dict):
-                module.output_shape = {k: v.shape for k, v in output.items() if isinstance(v, torch.Tensor)}
-            else:
-                raise ValueError(f"Unsupported output type: {type(output)}")
+        module.output_shape = guess_shape(output)
 
-        # Register hooks to capture input/output shapes
-        hook_handles = []
-        for name, layer in model_on_meta.named_modules():
-            if not hasattr(layer, 'output_shape'):
-                handle = layer.register_forward_hook(fw_hook)
-                hook_handles.append(handle)
-
-        # Perform a forward pass to trigger the hooks
-        model_on_meta(inp)
-
-    # Copy the input/output shapes back to the original model's layers
+    # Register hooks to capture input/output shapes
+    hook_handles = []
     for name, layer in model.named_modules():
-        layer_on_meta = get_module_by_name(model_on_meta, name)
+        if not hasattr(layer, 'output_shape'):
+            handle = layer.register_forward_hook(fw_hook)
+            hook_handles.append(handle)
 
-        if name != '' and hasattr(layer_on_meta, 'output_shape'):
-            layer.input_shape = layer_on_meta.input_shape
-            layer.output_shape = layer_on_meta.output_shape
+    # Perform a forward pass to trigger the hooks
+    model(inp)
+
+    for hook in hook_handles:
+        hook.remove()
 
     return {name: (layer.input_shape, layer.output_shape) for name, layer in model.named_modules() if
             hasattr(layer, 'output_shape')}
@@ -385,12 +380,12 @@ def default_custom_remove(module, hook_handle, hook_name, is_pre_hook, message=0
         if hasattr(module, 'hooks'):
             del module.hooks[hook_name]
 
-    if message:
+    if message is not None:
         print(message)
 
     hook_handle.remove()
 
-def store_activations(module, hook_name, mode='activations', *, shape=None):
+def store_activations(module, mode='activations', *, hook_name=None, shape=None):
     """
     Create a hook to store activations (inputs or outputs) of a module.
 
@@ -414,6 +409,9 @@ def store_activations(module, hook_name, mode='activations', *, shape=None):
         shape_name = 'input_shape'
     else:
         raise ValueError("Invalid mode. Use 'activations'/'outputs' or 'inputs'.")
+    
+    if hook_name is None:
+        hook_name = mode
 
     # Check if the module is already storing data
     if hasattr(module, storage_attr):
@@ -487,24 +485,6 @@ def custom_input_pre_hook(module, func, hook_name='custom_input', message=0):
     # Attach the custom remove function to the hook handle
     hook_handle.custom_remove = lambda: default_custom_remove(module, hook_handle, hook_name, is_pre_hook=True, message=message)
 
-def custom_input_pre_hook_old(module, input_to_substitute, hook_name='custom_input'):
-    # deprecated
-    def hook(module, input):
-        if hasattr(input[0], 'shape'):
-            assert input[0].shape == input_to_substitute.shape
-
-        return (input_to_substitute,)
-
-    hook_handle = module.register_forward_pre_hook(hook)
-
-    # Register the forward hook
-    if not hasattr(module, 'pre_hooks'):
-        module.pre_hooks = {}
-
-    module.pre_hooks[hook_name] = hook_handle
-    # Attach the custom remove function to the hook handle
-    hook_handle.custom_remove = lambda: default_custom_remove(module, hook_handle, hook_name, is_pre_hook=True)
-
 def print_registered_hooks(model, model_name=None, *, old=False):
     """
     Print all registered forward and pre-hooks in the model.
@@ -524,27 +504,47 @@ def print_registered_hooks(model, model_name=None, *, old=False):
             for hook_name, hook in hooks.items():
                 print(f"\tModule: {module_name}, {hook_type} name/ID: {hook_name}")
 
-    if hasattr(model, 'hooks'):
-        print_hooks(model.hooks, "Forward Hook", model_name)
-    if hasattr(model, 'pre_hooks'):
-        print_hooks(model.pre_hooks, "Pre-Hook", model_name)
-
-    for name, module in model.named_children():
-        module_name = f"{model_name}.{name}"
+    for name, module in model.named_modules():
+        module_name = f"{model_name + ('.' + name if name != '' else '')}"
         
-        if hasattr(module, 'pre_hooks') and not old:
-            pre_hooks = module.pre_hooks
-            if len(pre_hooks) != len(module._forward_pre_hooks):
-                print("Warning: A discrepancy between pre_hooks dict and _forward_pre_hooks was detected.")
-        else:
-            pre_hooks = module._forward_pre_hooks
+        discrepancy_pre_hooks, discrepancy_hooks = False, False
 
-        if hasattr(module, 'hooks') and not old:
-            hooks = module.hooks
-            if len(hooks) != len(module._forward_hooks):
-                print("Warning: A discrepancy between hooks dict and _forward_hooks was detected.")
+        # get the forward pre_hooks
+        # Check if the module has a custom pre_hooks dictionary
+        has_pre_hooks_dict = hasattr(module, 'pre_hooks')
+
+        # Determine if there is a discrepancy between the forward pre_hooks
+        discrepancy_pre_hooks = len(module._forward_pre_hooks) != len(module.pre_hooks) if has_pre_hooks_dict else len(module._forward_pre_hooks) > 0
+
+        # Decide which pre_hooks to use: _forward_pre_hooks or custom pre_hooks dictionary
+        if not has_pre_hooks_dict or old or discrepancy_pre_hooks:
+            pre_hooks = module._forward_pre_hooks
         else:
+            pre_hooks = module.pre_hooks
+
+        # Print a warning if there is a discrepancy between the pre_hooks
+        if discrepancy_pre_hooks:
+            print(f"Warning: A discrepancy between pre_hooks dict and _forward_hooks was detected for module '{module_name}'. Falling back to _forward_pre_hooks.")
+            print(f"_forward_pre_hooks count: {len(module._forward_hooks)}, pre_hooks dict count: {len(module.pre_hooks) if has_hooks_dict else 'No pre_hooks dict.'}")
+
+
+        # get the forward hooks
+        # Check if the module has a custom hooks dictionary
+        has_hooks_dict = hasattr(module, 'hooks')
+
+        # Determine if there is a discrepancy between the forward hooks
+        discrepancy_hooks = len(module._forward_hooks) != len(module.hooks) if has_hooks_dict else len(module._forward_hooks) > 0
+
+        # Decide which hooks to use: _forward_hooks or custom hooks dictionary
+        if not has_hooks_dict or old or discrepancy_hooks:
             hooks = module._forward_hooks
+        else:
+            hooks = module.hooks
+
+        # Print a warning if there is a discrepancy between the hooks
+        if discrepancy_hooks:
+            print(f"Warning: A discrepancy between hooks dict and _forward_hooks was detected for module '{module_name}'. Falling back to _forward_hooks.")
+            print(f"_forward_hooks count: {len(module._forward_hooks)}, hooks dict count: {len(module.hooks) if has_hooks_dict else 'No hooks dict.'}")
 
         print_hooks(pre_hooks, "Pre-Hook", module_name)
         print_hooks(hooks, "Forward Hook", module_name)
@@ -557,23 +557,27 @@ def remove_all_forward_hooks(model):
         model (torch.nn.Module): The model from which to remove all forward hooks.
     """
 
-    for child in model.children():
-        if child is not None:
-            if hasattr(child, 'hooks'):
-                child_hooks_copy = child.hooks.copy()
-
-                for name, handle in child_hooks_copy.items():
+    # Iterate over all modules, including the model itself and all descendants
+    for name, module in model.named_modules():
+        if module is not None:
+            # Check and remove custom hooks if present
+            if hasattr(module, 'hooks'):
+                # Make a copy to avoid modifying the dictionary while iterating
+                module_hooks_copy = module.hooks.copy()
+                
+                # Iterate over the hooks and remove them properly
+                for hook_name, handle in module_hooks_copy.items():
                     if hasattr(handle, 'custom_remove'):
                         handle.custom_remove()
                     else:
                         handle.remove()
+                
+                # Remove the hooks dictionary from the module
+                del module.hooks
 
-                del child.hooks
-
-                if hasattr(child, "_forward_hooks"):
-                    child._forward_hooks = OrderedDict()
-
-            remove_all_forward_hooks(child)
+            # Remove internal PyTorch hooks
+            if hasattr(module, "_forward_hooks"):
+                module._forward_hooks = OrderedDict()
 
 def remove_all_forward_pre_hooks(model):
     """
@@ -583,23 +587,27 @@ def remove_all_forward_pre_hooks(model):
         model (torch.nn.Module): The model from which to remove all forward pre_hooks.
     """
 
-    for child in model.children():
-        if child is not None:
-            if hasattr(child, 'pre_hooks'):
-                child_pre_hooks_copy = child.pre_hooks.copy()
-
-                for name, handle in child_pre_hooks_copy.items():
+    # Iterate over all modules, including the model itself and all descendants
+    for name, module in model.named_modules():
+        if module is not None:
+            # Check and remove custom pre_hooks if present
+            if hasattr(module, 'pre_hooks'):
+                # Make a copy to avoid modifying the dictionary while iterating
+                module_pre_hooks_copy = module.pre_hooks.copy()
+                
+                # Iterate over the pre_hooks and remove them properly
+                for hook_name, handle in module_pre_hooks_copy.items():
                     if hasattr(handle, 'custom_remove'):
                         handle.custom_remove()
                     else:
                         handle.remove()
+                
+                # Remove the pre_hooks dictionary from the module
+                del module.pre_hooks
 
-                del child.pre_hooks
-
-                if hasattr(child, "_forward_pre_hooks"):
-                    child._forward_pre_hooks = OrderedDict()
-
-            remove_all_forward_pre_hooks(child)
+            # Remove internal PyTorch pre_hooks
+            if hasattr(module, "_forward_pre_hooks"):
+                module._forward_pre_hooks = OrderedDict()
 
 def optim_inputs_for_neurons_in_layer(model, layer, device, mode='activations', neuron_indices=None, init_inputs=None,
                                       alpha=20.0, image_sparsity=50.0, num_steps=1000):
@@ -810,7 +818,6 @@ def fgsm_test(model, epsilon, loader, device, *, num_to_store=5, to_store_init_d
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.colors
-
 def visualize_ims(images, channel, titles=None, fig_title=None, cmap='coolwarm', norm=matplotlib.colors.CenteredNorm(), show_colorbar=None, figsize=None):
     """
     Visualize a batch of images along a specific channel.
@@ -855,27 +862,4 @@ def visualize_ims(images, channel, titles=None, fig_title=None, cmap='coolwarm',
     if fig_title:
         plt.suptitle(fig_title, fontsize=16)
 
-    plt.show()
-def bar_diagram(activations_to_vis, figsize):
-    """
-    Plot a bar diagram of the given activations.
-
-    Args:
-        activations_to_vis (torch.Tensor): Tensor containing activations to visualize.
-        figsize (tuple): Size of the figure.
-    """
-    plt.figure(figsize=figsize)
-    print(activations_to_vis)
-    bar_width = 0.4
-    indices = torch.arange(len(activations_to_vis))
-
-    plt.bar(indices, activations_to_vis.cpu(), width=bar_width, color='darkmagenta', alpha=0.7, label='Values')
-    plt.xticks(indices)
-    plt.grid(True, which='both', linestyle='-', linewidth=0.5, alpha=0.5, axis='y')
-
-    plt.xlabel('Index')
-    plt.ylabel('Value')
-    plt.title('Sparse representation')
-    plt.tight_layout()
-    
     plt.show()
